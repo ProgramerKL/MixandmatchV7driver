@@ -37,6 +37,7 @@ bool isfingeropen;
 bool isbackarmup;
 bool ispusherextended;
 int distancedetection = 80;
+int frontclawcounterstate;
 int backarmstatecounter;
 bool isstandoffgoalstacking;
 bool isfrontclawup;
@@ -57,6 +58,14 @@ thread raisebackarmthread = thread();
 // ==============================================================================
 // HELPER FUNCTIONS
 // ==============================================================================
+
+void killdrivetrain() {
+  drivetrainthread.interrupt();
+  LeftMotor.stop();
+  RightMotor.stop();
+  LeftMotor.setVelocity(0, percent);
+  RightMotor.setVelocity(0, percent);
+}
 
 void touchledcolourselection() {
   if (touchledstate) {
@@ -471,7 +480,7 @@ void stackpins() {
     movefrontclawdown();
     retractfrontguide();
     wait(0.1, seconds);
-    while (FrontArmMotor1.position(degrees) > 150) {
+    while (FrontArmMotor1.position(degrees) > 145) {
       wait(20, msec);
     }
     frontclawopen();
@@ -479,6 +488,7 @@ void stackpins() {
       wait(20, msec);
     }
     frontclawstop();
+    frontclawcounterstate = 0;
     // wait(1, seconds);
   } else {
     frontclawleftclose();
@@ -487,7 +497,7 @@ void stackpins() {
     extendclawbalancer();
     deployfrontguide();
     movefrontclawup();
-    while (FrontArmMotor1.position(degrees) < 190) {
+    while (FrontArmMotor1.position(degrees) < 195) {
       wait(20, msec);
     }
     frontclawstop();
@@ -576,9 +586,7 @@ void stackpinsontostandoff() {
     wait(0.1, seconds);
     // extendpusher();
   } else {
-    drivetrainthread.interrupt();
-    LeftMotor.stop();
-    RightMotor.stop();
+    killdrivetrain();
     FrontArmMotor1.setVelocity(30, percent);
     FrontArmMotor2.setVelocity(30, percent);
     movefrontclawdown();
@@ -603,6 +611,7 @@ void stackpinsontostandoff() {
     FrontArmMotor1.setVelocity(100, percent);
     FrontArmMotor2.setVelocity(100, percent);
     // retractclawbalancer();
+    frontclawcounterstate = 0;
   }
   LeftMotor.setStopping(brake);
   RightMotor.setStopping(brake);
@@ -612,13 +621,13 @@ void stackpinsontostandoff() {
 
 void stackpinsincornergoal() {
   movefrontclawup();
-  deployfrontguide();
   while (FrontArmMotor1.position(degrees) < 115) {
     wait(20, msec);
   }
   FrontArmMotor2.setStopping(hold);
   FrontArmMotor1.setStopping(hold);
   frontclawstop();
+  frontclawcounterstate = 0;
 }
 
 void pushercontrol() {
@@ -647,22 +656,24 @@ void buttonlogic() {
     dumppinsontobeam();
   }
   if (Controller.ButtonEDown.pressing()) {
-    wait(0.5, seconds);
-    if (Controller.ButtonEDown.pressing()) {
-      stackpinsincornergoal();
-    } else {
-      grabstartingpin();
-    }
+    grabstartingpin();
   }
   if (Controller.ButtonLDown.pressing()) {
     stackpins();
   }
   if (Controller.ButtonFDown.pressing()) {
-    frontclawleftclose();
-    frontclawrightclose();
-    isclawgrabbed = true;
-    // wait(0.15, seconds);
-    stackpinsontostandoff();
+    frontclawcounterstate++;
+    if (frontclawcounterstate % 3 == 1) {
+      stackpins();
+    } else if (frontclawcounterstate % 3 == 2) {
+      stackpinsincornergoal();
+    } else if (frontclawcounterstate % 3 == 0) {
+      frontclawleftclose();
+      frontclawrightclose();
+      isclawgrabbed = true;
+      // wait(0.15, seconds);
+      stackpinsontostandoff();
+    }
   }
 }
 
