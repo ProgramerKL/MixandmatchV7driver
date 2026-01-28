@@ -65,6 +65,7 @@ int crawlspeed = 35;
 void lowerfromstandoffgoal();
 void splitdrivewithcrawlmode();
 void stack91();
+void stack84();
 void stack110();
 void stack121();
 void lowerfrontarmfromstandoffheight();
@@ -173,7 +174,7 @@ void fingercontrol() {
       RightMotor.stop();
       stack91();
     } else if (backarmstatecounter % 3 == 2) {
-      if (standoffheightstatecounter % 3 == 1) {
+      if (standoffheightstatecounter % 3 == 0) {
         while (Controller.ButtonRDown.pressing()) {
           Brain.playSound(siren);
           if (Controller.AxisD.position() > 80) {
@@ -194,7 +195,7 @@ void fingercontrol() {
         }
         isbackarmloweringusingbutton = false;
         stack121();
-      } else if (standoffheightstatecounter % 3 == 2) {
+      } else if (standoffheightstatecounter % 3 == 1) {
         touchled5.setColor(yellow_green);
         stack110();
         backarmstatecounter = 0;
@@ -345,6 +346,7 @@ void raisebackarmtoministandoffstack() {
     while (BackArmMotorGroup.position(degrees) > 440) {
       wait(20, msec);
     }
+    deployguide();
     BackArmMotorGroup.setStopping(hold);
     backarmstop();
   } else {
@@ -352,6 +354,7 @@ void raisebackarmtoministandoffstack() {
     while (BackArmMotorGroup.position(degrees) < 440) {
       wait(20, msec);
     }
+    deployguide();
     backarmstop();
   }
 }
@@ -365,6 +368,7 @@ void raisebackarmtobigstandoffystack() {
     BackArmMotorGroup.setStopping(hold);
     // wait(0.25, seconds);
     backarmstop();
+    retractguide();
   } else {
     spinbackarmup();
 
@@ -372,6 +376,7 @@ void raisebackarmtobigstandoffystack() {
       wait(20, msec);
     }
     wait(0.175, seconds);
+    retractguide();
     backarmstop();
   }
 }
@@ -402,12 +407,12 @@ void stack84() {
   RightMotor.setVelocity(30, percent);
   LeftMotor.spin(forward);
   RightMotor.spin(forward);
-  wait(0.41, seconds);
+  wait(0.5, seconds);
   drivetrainthread = thread(splitdrivewithcrawlmode);
   BackArmMotorGroup.setStopping(coast);
   BackArmMotorGroup.setVelocity(60, percent);
   spinbackarmdown();
-  wait(0.58, seconds);
+  wait(0.78, seconds);
   BackArmMotorGroup.stop();
   BackArmMotorGroup.setVelocity(100, percent);
   while (Controller.ButtonRDown.pressing()) {
@@ -488,13 +493,13 @@ void stack121() {
 }
 
 void stack110() {
-  drivetrainthread.interrupt();
-  LeftMotor.setVelocity(30, percent);
-  RightMotor.setVelocity(30, percent);
-  LeftMotor.spin(forward);
-  RightMotor.spin(forward);
-  wait(0.41, seconds);
-  drivetrainthread = thread(splitdrivewithcrawlmode);
+  // drivetrainthread.interrupt();
+  // LeftMotor.setVelocity(30, percent);
+  // RightMotor.setVelocity(30, percent);
+  // LeftMotor.spin(forward);
+  // RightMotor.spin(forward);
+  // wait(0.41, seconds);
+  // drivetrainthread = thread(splitdrivewithcrawlmode);
   BackArmMotorGroup.setStopping(coast);
   BackArmMotorGroup.setVelocity(60, percent);
   spinbackarmdown();
@@ -520,6 +525,7 @@ void stack110() {
     BackArmMotorGroup.stop();
   }
   openfinger();
+  retractguide();
   spinbackarmup();
   if (BackArmMotorGroup.position(degrees) > 380) {
     while (BackArmMotorGroup.position(degrees) < 440) {
@@ -1150,11 +1156,12 @@ void buttonlogic() {
     } else if (Controller.ButtonRUp.pressing()) {
       standoffheightstatecounter++;
       if (standoffheightstatecounter % 3 == 1) {
-        touchled5.setColor(red);
-      } else if (standoffheightstatecounter % 3 == 2) {
+        deployguide();
         touchled5.setColor(yellow_green);
-      } else {
+      } else if (standoffheightstatecounter % 3 == 2) {
         touchled5.setColor(purple);
+      } else {
+        touchled5.setColor(red);
       }
       Brain.playSound(siren);
     }
