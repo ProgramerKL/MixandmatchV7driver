@@ -445,9 +445,19 @@ void stack121() {
   }
   BackArmMotorGroup.stop();
   BackArmMotorGroup.setVelocity(100, percent);
+  killdrivetrain();
+  LeftMotor.setVelocity(100, percent);
+  RightMotor.setVelocity(100, percent);
+  LeftMotor.spin(reverse);
+  RightMotor.spin(reverse);
+  wait(0.2, seconds);
   openfinger();
+  drivetrainthread = thread(splitdrivewithcrawlmode);
   isclawgrabbed = true;
   backarmstatecounter = 0;
+  BackArmMotorGroup.spin(forward);
+  wait(0.25, seconds);
+  BackArmMotorGroup.stop();
   wait(2, seconds);
   backarmstatecounter = 0;
   wait(0.1, seconds);
@@ -641,6 +651,9 @@ void splitdrivewithcrawlmode() {
     float C_position = Controller.AxisC.position();
     if (backarmstatecounter % 3 == 1) {
       C_position = C_position * 0.6;
+    } else if (iscornergoalstacking) {
+      C_position = C_position * 0.45;
+      A_position = A_position * 0.45;
     }
     float LeftSpeed = A_position + C_position;
     float RightSpeed = A_position - C_position;
@@ -796,6 +809,7 @@ void raisefrontarmtostackingheight() {
   frontarmmotorgroup.setStopping(hold);
   retractguide();
   if (isclawgrabbed) {
+    frontarmmotorgroup.spinToPosition(0, degrees, true);
     frontclawleftclose();
     wait(0.1, seconds);
   }
@@ -861,6 +875,9 @@ void grabpins() {
   if (isclawgrabbed) {
     frontclawleftopen();
   } else {
+    if (frontarmmotorgroup.position(degrees) > 0) {
+      frontarmmotorgroup.spinToPosition(0, degrees, true);
+    }
     frontclawleftclose();
   }
   wait(0.1, seconds);
@@ -1040,44 +1057,42 @@ void buttonlogic() {
   if (Controller.ButtonRUp.pressing()) {
     printf("frontclawstate is %d\n", isfrontclawup);
     printf("frontclawstate is %d\n", frontclawcounterstate);
-    // if (isfrontclawup && startingpingrabcounter % 3 == 0 &&
-    //     !(frontclawcounterstate == 2)) {
-    //   trianglegoalreset();
-    // } else {
-    if (!(backarmstatecounter % 3 == 2)) {
-      raisebackarmthread.interrupt();
-      BackArmMotorGroup.stop();
-      // printf("iscornergoalstacking%d\n", iscornergoalstacking);
-      // printf("the clawcounterstate is %d\n", frontclawcounterstate);
-      if (!iscornergoalstacking && !(frontclawcounterstate % 3 == 2)) {
-        // printf("inside func");
-        grabstartingpin();
-      }
-      // }
-    } else if (Controller.ButtonRUp.pressing()) {
-      standoffheightstatecounter++;
-      if (standoffheightstatecounter % 3 == 0) {
-        touchled5.setColor(red);
-      } else if (standoffheightstatecounter % 3 == 1) {
-        touchled5.setColor(yellow_green);
-      } else {
-        touchled5.setColor(purple);
-      }
-      Brain.playSound(siren);
-    }
-    // }
-  }
-
-  if (!isfrontclawup) {
-    if (!iscornergoalstacking) {
-      // if (frontclawcounterstate % 3 == 2) {
-      if (Controller.ButtonLUp.pressing()) {
+    if (isfrontclawup && startingpingrabcounter % 3 == 0 &&
+        !(frontclawcounterstate == 2)) {
+      trianglegoalreset();
+    } else {
+      if (!(backarmstatecounter % 3 == 2)) {
+        raisebackarmthread.interrupt();
+        BackArmMotorGroup.stop();
+        // printf("iscornergoalstacking%d\n", iscornergoalstacking);
+        // printf("the clawcounterstate is %d\n", frontclawcounterstate);
         if (!iscornergoalstacking && !(frontclawcounterstate % 3 == 2)) {
-          printf("inside func");
-          grabpins();
+          // printf("inside func");
+          grabstartingpin();
         }
         // }
+      } else if (Controller.ButtonRUp.pressing()) {
+        standoffheightstatecounter++;
+        if (standoffheightstatecounter % 3 == 0) {
+          touchled5.setColor(red);
+        } else if (standoffheightstatecounter % 3 == 1) {
+          touchled5.setColor(yellow_green);
+        } else {
+          touchled5.setColor(purple);
+        }
+        Brain.playSound(siren);
       }
+    }
+  }
+
+  if (!iscornergoalstacking) {
+    // if (frontclawcounterstate % 3 == 2) {
+    if (Controller.ButtonLUp.pressing()) {
+      if (!iscornergoalstacking && !(frontclawcounterstate % 3 == 2)) {
+        printf("inside func");
+        grabpins();
+      }
+      // }
     }
   }
 }
