@@ -15,38 +15,34 @@ vex::brain Brain;
 
 // VEXcode device constructors
 controller Controller = controller();
-motor LeftMotor = motor(PORT9, false);
-motor RightMotor = motor(PORT3, true);
+motor LeftMotor = motor(PORT11, false);
+motor RightMotor = motor(PORT5, true);
 // motor motor2 = motor(PORT2, true);
-touchled touchled5 = touchled(PORT5);
-motor BackArmMotor1 = motor(PORT2, true);
-motor BackArmMotor2 = motor(PORT8, false);
+touchled touchled5 = touchled(PORT9);
+motor BackArmMotor1 = motor(PORT12, false);
+motor BackArmMotor2 = motor(PORT6, true);
 motor_group BackArmMotorGroup = motor_group(BackArmMotor1, BackArmMotor2);
-motor motor2 = motor(PORT2, false);
-motor motor8 = motor(PORT8, true);
-motor FrontArmMotor1 = motor(PORT4, true);
-motor FrontArmMotor2 = motor(PORT10, false);
+motor FrontArmMotor1 = motor(PORT10, false);
+motor FrontArmMotor2 = motor(PORT2, true);
 motor_group frontarmmotorgroup = motor_group(FrontArmMotor1, FrontArmMotor2);
-pneumatic P1 = pneumatic(PORT11);
+pneumatic P1 = pneumatic(PORT3);
 // from front view left
-pneumatic P2 = pneumatic(PORT12);
-pneumatic P3 = pneumatic(PORT6);
+pneumatic P2 = pneumatic(PORT4);
 float Rmotorspeed, Lmotorspeed, Rightstick, Leftstick, deadband = 10;
-bool crawlmodestate = false;
 float Dinput;
-bool isfrontclawdownstate = false;
-bool Stackingbuttonstate;
 bool driveforwardstate = false;
 bool iscornergoalstacking;
-bool isfrontclawrightopen;
-bool isfrontclawleftopen;
+bool Trianglemovingstate;
 bool isfingeropen;
-bool touchledstate;
+bool istrianglestacking;
+bool Stackingbuttonstate = false;
 int standoffheightstatecounter;
-bool isbackarmup;
 bool ispusherextended;
+bool isguidedeployed;
 int frontclawstandoffheight;
-int cornergoalstackingheight = 100;
+bool isintriangle1;
+bool isintriangel2;
+int cornergoalstackingheight = 130;
 int distancedetection = 80;
 float backarmloweringheight = 475;
 int frontclawcounterstate = 0;
@@ -57,14 +53,14 @@ void stack91onstandoff();
 bool guidestate;
 int backarmstatecounter;
 bool isfrontclawup;
-bool isbackarmloweringusingbutton;
-bool startingpingrabstate;
+int startingpingrabcounter;
 bool isclawgrabbed = true;
 bool clawstartingcontrol;
 int crawlspeed = 35;
 void lowerfromstandoffgoal();
 void splitdrivewithcrawlmode();
 void stack91();
+void trianglegoalreset();
 void stack84();
 void stack110();
 void stack121();
@@ -77,7 +73,6 @@ event eventraisebackarmtobigstandoffystack = event();
 event eventraisebackarmtonest = event();
 event eventfrontclawgodown = event();
 event eventdriveforwardforstandoff = event();
-thread fingergrabgoingupthread = thread();
 thread raisebackarmthread = thread();
 thread threadfrontclawcontrol = thread();
 // ==============================================================================
@@ -96,11 +91,13 @@ void killdrivetrain() {
 
 void deployguide() {
   P1.extend(cylinder1);
+  isguidedeployed = true;
   // P3.extend(cylinder1);
 }
 
 void retractguide() {
   P1.retract(cylinder1);
+  isguidedeployed = false;
   // P3.retract(cylinder1);
 }
 
@@ -109,21 +106,15 @@ void pumpon() {
   P2.pumpOn();
   // P3.pumpOn();
 }
-void extendclawbalancer() { P2.extend(cylinder1); }
-void retractclawbalancer() { P2.retract(cylinder1); }
+void extendclawbalancer() { P2.retract(cylinder1); }
+void retractclawbalancer() { P2.extend(cylinder1); }
 
 void extendpusher() { P1.extend(cylinder2); }
 void retractpusher() { P1.retract(cylinder2); }
 
-void frontclawleftclose() {
-  P1.retract(cylinder2);
-  isfrontclawleftopen = false;
-}
+void frontclawleftclose() { P1.retract(cylinder2); }
 
-void frontclawleftopen() {
-  P1.extend(cylinder2);
-  isfrontclawleftopen = true;
-}
+void frontclawleftopen() { P1.extend(cylinder2); }
 
 void frontclawopen() { frontclawleftopen(); }
 
@@ -154,37 +145,36 @@ void frontclawstop() { frontarmmotorgroup.stop(); }
 
 void fingercontrol() {
   if (isfingeropen) {
-    LeftMotor.stop();
-    RightMotor.stop();
     spinbackarmdown();
-    wait(0.1, seconds);
+    // wait(0.1, seconds);
     closefinger();
-    wait(0.5, seconds);
+    wait(0.25, seconds);
     spinbackarmup();
     while (BackArmMotorGroup.position(degrees) < 80) {
+      if (Controller.ButtonEUp.pressing()) {
+        break;
+      }
       wait(20, msec);
     }
     BackArmMotorGroup.setStopping(hold);
-    backarmstop();
+    if (!Controller.ButtonEUp.pressing()) {
+      backarmstop();
+    }
   } else {
     BackArmMotorGroup.stop();
     if (backarmstatecounter % 3 == 1) {
-      drivetrainthread.interrupt();
-      LeftMotor.stop();
-      RightMotor.stop();
       stack91();
     } else if (backarmstatecounter % 3 == 2) {
       if (standoffheightstatecounter % 3 == 0) {
+        BackArmMotorGroup.spinToPosition(473, degrees, true);
         while (Controller.ButtonRDown.pressing()) {
           Brain.playSound(siren);
           if (Controller.AxisD.position() > 80) {
-            BackArmMotorGroup.setVelocity(60, percent);
-            BackArmMotorGroup.spin(forward);
-            isbackarmloweringusingbutton = true;
-            wait(0.2, seconds);
+            BackArmMotorGroup.setVelocity(45, percent);
+            BackArmMotorGroup.spinToPosition(545, degrees, true);
           } else if (Controller.AxisD.position() < -80) {
-            BackArmMotorGroup.setVelocity(60, percent);
-            BackArmMotorGroup.spin(reverse);
+            BackArmMotorGroup.setVelocity(45, percent);
+            BackArmMotorGroup.spinToPosition(500, degrees, true);
           } else {
             BackArmMotorGroup.setStopping(hold);
             BackArmMotorGroup.stop();
@@ -193,7 +183,6 @@ void fingercontrol() {
           wait(20, msec);
           BackArmMotorGroup.stop();
         }
-        isbackarmloweringusingbutton = false;
         stack121();
       } else if (standoffheightstatecounter % 3 == 1) {
         touchled5.setColor(yellow_green);
@@ -206,21 +195,25 @@ void fingercontrol() {
     } else {
       BackArmMotorGroup.setStopping(coast);
       BackArmMotorGroup.setVelocity(30, percent);
-      spinbackarmdown();
       LeftMotor.setVelocity(0, percent);
       RightMotor.setVelocity(0, percent);
-      wait(0.54, seconds);
       BackArmMotorGroup.stop();
       BackArmMotorGroup.setVelocity(100, percent);
-      wait(0.2, seconds);
-      openfinger();
-      wait(0.15, seconds);
-      spinbackarmup();
-      if (BackArmMotorGroup.position(degrees) > 100) {
-        while (BackArmMotorGroup.position(degrees) < 170) {
-          wait(20, msec);
-        }
+      spinbackarmdown();
+      while (BackArmMotorGroup.position(degrees) > 20) {
+        wait(20, msec);
       }
+      BackArmMotorGroup.setStopping(coast);
+      BackArmMotorGroup.setVelocity(100, percent);
+      backarmstop();
+      openfinger();
+      // wait(0.15, seconds);
+      // spinbackarmup();
+      // if (BackArmMotorGroup.position(degrees) > 100) {
+      //   while (BackArmMotorGroup.position(degrees) < 170) {
+      //     wait(20, msec);
+      //   }
+      // }
       backarmstop();
       // if (BackArmMotorGroup.position(degrees) > 100) {
       //   drivetrainthread.interrupt();
@@ -232,13 +225,6 @@ void fingercontrol() {
       //   drivetrainthread = thread(splitdrivewithcrawlmode);
       // }
       // wait(0.25, seconds);
-      spinbackarmdown();
-      while (BackArmMotorGroup.position(degrees) > 20) {
-        wait(20, msec);
-      }
-      BackArmMotorGroup.setStopping(coast);
-      BackArmMotorGroup.setVelocity(100, percent);
-      backarmstop();
       backarmstatecounter = 0;
     }
   }
@@ -247,6 +233,8 @@ void fingercontrol() {
 void backarmgodownforbeam() {
   spinbackarmdown();
   wait(0.45, seconds);
+  backarmstop();
+  wait(1.2, seconds);
   if (!Controller.ButtonFUp.pressing()) {
     spinbackarmup();
     while (BackArmMotorGroup.position(degrees) < 80) {
@@ -259,8 +247,10 @@ void backarmgodownforbeam() {
 
 void dumppinsontobeam() {
   retractclawbalancer();
-  frontclawleftclose();
-  wait(0.1, seconds);
+  if (isclawgrabbed) {
+    frontclawleftclose();
+    wait(0.1, seconds);
+  }
   closefinger();
   eventbackclawgodownforbeam.broadcast();
   movefrontclawup();
@@ -271,24 +261,23 @@ void dumppinsontobeam() {
   frontarmmotorgroup.setStopping(brake);
   frontarmmotorgroup.setVelocity(100, percent);
   retractclawbalancer();
-  while (frontarmmotorgroup.position(degrees) < 700) { // 740
+  while (frontarmmotorgroup.position(degrees) < 715) { // 740
     wait(20, msec);
   }
+  wait(0.1, seconds);
   frontclawopen();
   isclawgrabbed = true;
   frontclawstop();
   frontarmmotorgroup.setVelocity(100, percent);
   eventfrontclawgodown.broadcast();
-  while (frontarmmotorgroup.position(degrees) > 5) {
+  while (frontarmmotorgroup.position(degrees) > 15) {
     wait(20, msec);
   }
   extendclawbalancer();
   frontarmmotorgroup.setStopping(brake);
   frontclawleftopen();
   iscornergoalstacking = false;
-  isfrontclawup = true;
-  isfrontclawdownstate = true;
-  wait(0.1, seconds);
+  isfrontclawup = false;
   frontclawstop();
 }
 
@@ -310,16 +299,11 @@ void lowerbackarmfromstandoff() {
 void lowerbackarmfromstandoffwithoutrelease() {
   BackArmMotorGroup.setVelocity(60, percent);
   spinbackarmdown();
-  // while (BackArmMotorGroup.position(degrees) > 10) {
-  //   wait(20, msec);
-  // }
-  // backarmstop();
-  // BackArmMotorGroup.setVelocity(100, percent);
-  // spinbackarmup();
   while (BackArmMotorGroup.position(degrees) > 100) {
     wait(20, msec);
   }
   backarmstop();
+  BackArmMotorGroup.setVelocity(100, percent);
 }
 void raisebackarmtogroundystack() {
   if (BackArmMotorGroup.position(degrees) > 300) {
@@ -360,25 +344,13 @@ void raisebackarmtoministandoffstack() {
 }
 
 void raisebackarmtobigstandoffystack() {
-  if (BackArmMotorGroup.position(degrees) > 450) {
-    spinbackarmdown();
-    while (BackArmMotorGroup.position(degrees) < 455) {
-      wait(20, msec);
-    }
-    BackArmMotorGroup.setStopping(hold);
-    // wait(0.25, seconds);
-    backarmstop();
-    retractguide();
-  } else {
-    spinbackarmup();
-
-    while (BackArmMotorGroup.position(degrees) < 495) { // 455
-      wait(20, msec);
-    }
-    wait(0.175, seconds);
-    retractguide();
-    backarmstop();
+  standoffheightstatecounter = 0;
+  spinbackarmup();
+  while (BackArmMotorGroup.position(degrees) < 555) { // 455
+    wait(20, msec);
   }
+  retractguide();
+  backarmstop();
 }
 
 // void raisebackarmtobigstandoffystack() {
@@ -407,12 +379,13 @@ void stack84() {
   RightMotor.setVelocity(30, percent);
   LeftMotor.spin(forward);
   RightMotor.spin(forward);
-  wait(0.5, seconds);
+  wait(0.59, seconds);
+  deployguide();
   drivetrainthread = thread(splitdrivewithcrawlmode);
   BackArmMotorGroup.setStopping(coast);
   BackArmMotorGroup.setVelocity(60, percent);
   spinbackarmdown();
-  wait(0.78, seconds);
+  wait(0.65, seconds);
   BackArmMotorGroup.stop();
   BackArmMotorGroup.setVelocity(100, percent);
   while (Controller.ButtonRDown.pressing()) {
@@ -420,7 +393,6 @@ void stack84() {
     if (Controller.AxisD.position() > 30) {
       BackArmMotorGroup.setVelocity(60, percent);
       BackArmMotorGroup.spin(forward);
-      isbackarmloweringusingbutton = true;
       wait(0.2, seconds);
     } else if (Controller.AxisD.position() < -30) {
       BackArmMotorGroup.setVelocity(60, percent);
@@ -433,7 +405,9 @@ void stack84() {
     wait(20, msec);
     BackArmMotorGroup.stop();
   }
+  backarmstatecounter = 0;
   openfinger();
+  retractguide();
   spinbackarmup();
   if (BackArmMotorGroup.position(degrees) > 380) {
     while (BackArmMotorGroup.position(degrees) < 440) {
@@ -459,13 +433,11 @@ void stack84() {
   BackArmMotorGroup.setStopping(coast);
   BackArmMotorGroup.setVelocity(100, percent);
   backarmstop();
-  backarmstatecounter = 0;
 }
 
 void stack121() {
-  drivetrainthread.interrupt();
-  LeftMotor.stop();
-  RightMotor.stop();
+  // LeftMotor.stop();
+  // RightMotor.stop();
   BackArmMotorGroup.setVelocity(30, percent);
   spinbackarmdown();
   while (BackArmMotorGroup.position(degrees) > 480) {
@@ -474,13 +446,18 @@ void stack121() {
   BackArmMotorGroup.stop();
   BackArmMotorGroup.setVelocity(100, percent);
   openfinger();
+  isclawgrabbed = true;
+  backarmstatecounter = 0;
+  wait(2, seconds);
+  backarmstatecounter = 0;
   wait(0.1, seconds);
-  LeftMotor.setVelocity(100, percent);
-  RightMotor.setVelocity(100, percent);
-  RightMotor.spin(forward);
-  LeftMotor.spin(forward);
-  wait(0.5, seconds);
-  drivetrainthread = thread(splitdrivewithcrawlmode);
+  // drivetrainthread.interrupt();
+  // LeftMotor.setVelocity(100, percent);
+  // RightMotor.setVelocity(100, percent);
+  // RightMotor.spin(forward);
+  // LeftMotor.spin(forward);
+  // wait(0.5, seconds);
+  // drivetrainthread = thread(splitdrivewithcrawlmode);
   spinbackarmdown();
   while (BackArmMotorGroup.position(degrees) > 100) {
     wait(20, msec);
@@ -488,18 +465,17 @@ void stack121() {
   BackArmMotorGroup.setStopping(coast);
   BackArmMotorGroup.setVelocity(100, percent);
   backarmstop();
-  backarmstatecounter = 0;
-  isclawgrabbed = true;
 }
 
 void stack110() {
-  // drivetrainthread.interrupt();
-  // LeftMotor.setVelocity(30, percent);
-  // RightMotor.setVelocity(30, percent);
-  // LeftMotor.spin(forward);
-  // RightMotor.spin(forward);
-  // wait(0.41, seconds);
-  // drivetrainthread = thread(splitdrivewithcrawlmode);
+  drivetrainthread.interrupt();
+  LeftMotor.setVelocity(30, percent);
+  RightMotor.setVelocity(30, percent);
+  LeftMotor.spin(forward);
+  RightMotor.spin(forward);
+  wait(0.445, seconds);
+  deployguide();
+  drivetrainthread = thread(splitdrivewithcrawlmode);
   BackArmMotorGroup.setStopping(coast);
   BackArmMotorGroup.setVelocity(60, percent);
   spinbackarmdown();
@@ -510,21 +486,21 @@ void stack110() {
     Brain.playSound(siren);
     if (Controller.AxisD.position() > 30) {
       BackArmMotorGroup.setVelocity(60, percent);
-      BackArmMotorGroup.spin(forward);
-      isbackarmloweringusingbutton = true;
-      wait(0.2, seconds);
+      BackArmMotorGroup.spinToPosition(455, degrees, true);
     } else if (Controller.AxisD.position() < -30) {
       BackArmMotorGroup.setVelocity(60, percent);
-      BackArmMotorGroup.spin(reverse);
+      BackArmMotorGroup.spinToPosition(412, degrees, true);
     } else {
       BackArmMotorGroup.setStopping(hold);
       BackArmMotorGroup.stop();
       BackArmMotorGroup.setVelocity(100, percent);
     }
-    wait(20, msec);
+    wait(30, msec);
     BackArmMotorGroup.stop();
   }
   openfinger();
+  backarmstatecounter = 0;
+  wait(0.2, seconds);
   retractguide();
   spinbackarmup();
   if (BackArmMotorGroup.position(degrees) > 380) {
@@ -532,9 +508,88 @@ void stack110() {
       wait(20, msec);
     }
   }
+  wait(0.5, seconds);
+  backarmstop();
+  wait(0.25, seconds);
+  spinbackarmdown();
+  while (BackArmMotorGroup.position(degrees) > 20) {
+    wait(20, msec);
+  }
+  BackArmMotorGroup.setStopping(coast);
+  BackArmMotorGroup.setVelocity(100, percent);
+  backarmstop();
+}
+
+void stack91() {
+  BackArmMotorGroup.setStopping(coast);
+  BackArmMotorGroup.setVelocity(30, percent);
+  spinbackarmdown();
+  wait(0.43, seconds);
+  BackArmMotorGroup.stop();
+  BackArmMotorGroup.setVelocity(100, percent);
+  deployguide();
+  while (Controller.ButtonRDown.pressing()) {
+    Brain.playSound(siren);
+    if (Controller.AxisD.position() > 30) {
+      BackArmMotorGroup.setVelocity(60, percent);
+      BackArmMotorGroup.spinToPosition(350, degrees, true);
+    } else if (Controller.AxisD.position() < -30) {
+      BackArmMotorGroup.setVelocity(60, percent);
+      BackArmMotorGroup.spinToPosition(215, degrees, true);
+    } else {
+      BackArmMotorGroup.setStopping(hold);
+      BackArmMotorGroup.stop();
+      BackArmMotorGroup.setVelocity(100, percent);
+    }
+    wait(30, msec);
+    BackArmMotorGroup.stop();
+  }
+  openfinger();
+  backarmstatecounter = 0;
+  wait(0.45, seconds);
+  spinbackarmup();
+  wait(0.35, seconds);
+  backarmstop();
+  retractguide();
+  wait(0.2, seconds);
+  // wait(1.5, seconds);
+  spinbackarmdown();
+  while (BackArmMotorGroup.position(degrees) > 20) {
+    wait(20, msec);
+  }
+  BackArmMotorGroup.setStopping(coast);
+  BackArmMotorGroup.setVelocity(100, percent);
+  backarmstop();
+}
+
+void stack91onstandoff() {
+  drivetrainthread.interrupt();
+  LeftMotor.setVelocity(30, percent);
+  RightMotor.setVelocity(30, percent);
+  LeftMotor.spin(forward);
+  RightMotor.spin(forward);
+  wait(0.45, seconds);
+  drivetrainthread = thread(splitdrivewithcrawlmode);
+  BackArmMotorGroup.setStopping(coast);
+  BackArmMotorGroup.setVelocity(30, percent);
+  spinbackarmdown();
+  wait(0.54, seconds);
+  BackArmMotorGroup.stop();
+  BackArmMotorGroup.setVelocity(100, percent);
+  wait(0.15, seconds);
+  openfinger();
+  spinbackarmup();
+  if (BackArmMotorGroup.position(degrees) > 320) {
+    while (BackArmMotorGroup.position(degrees) < 380) {
+      wait(20, msec);
+    }
+  }
   wait(0.2, seconds);
   backarmstop();
   if (BackArmMotorGroup.position(degrees) > 100) {
+    // spinbackarmup();
+    // wait(0.4, seconds);
+    // backarmstop();
     drivetrainthread.interrupt();
     LeftMotor.setVelocity(100, percent);
     RightMotor.setVelocity(100, percent);
@@ -554,143 +609,10 @@ void stack110() {
   backarmstatecounter = 0;
 }
 
-void stack91() {
-  BackArmMotorGroup.setStopping(coast);
-  BackArmMotorGroup.setVelocity(30, percent);
-  spinbackarmdown();
-  wait(0.45, seconds);
-  BackArmMotorGroup.stop();
-  // wait(0.2, seconds);
-  BackArmMotorGroup.setVelocity(100, percent);
-  while (Controller.ButtonRDown.pressing()) {
-    drivetrainthread = thread(splitdrivewithcrawlmode);
-    Brain.playSound(siren);
-    if (Controller.AxisD.position() > 30) {
-      BackArmMotorGroup.setVelocity(60, percent);
-      BackArmMotorGroup.spin(forward);
-      isbackarmloweringusingbutton = true;
-      wait(0.2, seconds);
-    } else if (Controller.AxisD.position() < -30) {
-      if (BackArmMotorGroup.position(degrees) > 270) {
-        BackArmMotorGroup.setVelocity(60, percent);
-        BackArmMotorGroup.spin(reverse);
-      }
-    } else {
-      BackArmMotorGroup.setStopping(hold);
-      BackArmMotorGroup.stop();
-      BackArmMotorGroup.setVelocity(100, percent);
-    }
-    wait(20, msec);
-    BackArmMotorGroup.stop();
-  }
-  drivetrainthread.interrupt();
-  LeftMotor.stop();
-  RightMotor.stop();
-  openfinger();
-  // wait(0.1, seconds);
-  wait(0.5, seconds);
-  spinbackarmup();
-  if (BackArmMotorGroup.position(degrees) > 100) {
-    while (BackArmMotorGroup.position(degrees) < 170) {
-      wait(20, msec);
-    }
-  }
-  wait(0.25, seconds);
-  backarmstop();
-  retractguide();
-  if (BackArmMotorGroup.position(degrees) > 100) {
-    // spinbackarmup();
-    // wait(0.4, seconds);
-    // backarmstop();
-    // drivetrainthread.interrupt();
-    LeftMotor.setVelocity(100, percent);
-    RightMotor.setVelocity(100, percent);
-    RightMotor.spin(forward);
-    LeftMotor.spin(forward);
-    wait(0.4, seconds);
-    drivetrainthread = thread(splitdrivewithcrawlmode);
-  }
-  wait(0.25, seconds);
-  spinbackarmdown();
-  while (BackArmMotorGroup.position(degrees) > 20) {
-    wait(20, msec);
-  }
-  BackArmMotorGroup.setStopping(coast);
-  BackArmMotorGroup.setVelocity(100, percent);
-  backarmstop();
-  backarmstatecounter = 0;
-}
-
-void raisebackarmto91onstandoff() {
-  if (BackArmMotorGroup.position(degrees) > 330) {
-    spinbackarmdown();
-    while (BackArmMotorGroup.position(degrees) > 330) {
-      wait(20, msec);
-    }
-    BackArmMotorGroup.setStopping(hold);
-    backarmstop();
-  } else {
-    spinbackarmup();
-    while (BackArmMotorGroup.position(degrees) < 330) {
-      wait(20, msec);
-    }
-    wait(0.15, seconds);
-    backarmstop();
-  }
-}
-
-// void stack91onstandoff() {
-//   drivetrainthread.interrupt();
-//   LeftMotor.setVelocity(30, percent);
-//   RightMotor.setVelocity(30, percent);
-//   LeftMotor.spin(forward);
-//   RightMotor.spin(forward);
-//   wait(0.45, seconds);
-//   drivetrainthread = thread(splitdrivewithcrawlmode);
-//   BackArmMotorGroup.setStopping(coast);
-//   BackArmMotorGroup.setVelocity(30, percent);
-//   spinbackarmdown();
-//   wait(0.54, seconds);
-//   BackArmMotorGroup.stop();
-//   BackArmMotorGroup.setVelocity(100, percent);
-//   wait(0.15, seconds);
-//   openfinger();
-//   spinbackarmup();
-//   if (BackArmMotorGroup.position(degrees) > 320) {
-//     while (BackArmMotorGroup.position(degrees) < 380) {
-//       wait(20, msec);
-//     }
-//   }
-//   wait(0.2, seconds);
-//   backarmstop();
-//   if (BackArmMotorGroup.position(degrees) > 100) {
-//     // spinbackarmup();
-//     // wait(0.4, seconds);
-//     // backarmstop();
-//     drivetrainthread.interrupt();
-//     LeftMotor.setVelocity(100, percent);
-//     RightMotor.setVelocity(100, percent);
-//     RightMotor.spin(forward);
-//     LeftMotor.spin(forward);
-//     wait(0.4, seconds);
-//     drivetrainthread = thread(splitdrivewithcrawlmode);
-//   }
-//   wait(0.25, seconds);
-//   spinbackarmdown();
-//   while (BackArmMotorGroup.position(degrees) > 20) {
-//     wait(20, msec);
-//   }
-//   BackArmMotorGroup.setStopping(coast);
-//   BackArmMotorGroup.setVelocity(100, percent);
-//   backarmstop();
-//   backarmstatecounter = 0;
-// }
-
 void backarmcontrol() {
   backarmstatecounter++;
   raisebackarmthread.interrupt();
   if (backarmstatecounter % 3 == 1) { // raise to 91 height
-    fingergrabgoingupthread.interrupt();
     closefinger();
     raisebackarmthread = thread(raisebackarmtogroundystack);
     touchled5.setColor(green);
@@ -700,6 +622,7 @@ void backarmcontrol() {
     touchled5.setColor(red);
   } else if (backarmstatecounter % 3 == 0) {
     raisebackarmthread = thread(lowerbackarmfromstandoffwithoutrelease);
+
     touchled5.setColor(white);
   }
 }
@@ -712,46 +635,15 @@ void splitdrivewithcrawlmode() {
   LeftMotor.setStopping(brake);
   RightMotor.setStopping(brake);
   while (true) {
-
     int absA = fabs(Controller.AxisA.position());
     int absC = fabs(Controller.AxisC.position());
     float A_position = Controller.AxisA.position();
     float C_position = Controller.AxisC.position();
-    if (crawlmodestate) {
-      // LeftMotor.setStopping(hold);
-      // RightMotor.setStopping(hold);
-      if (Controller.ButtonRDown.pressing()) {
-        deadband = 70;
-      } else {
-        deadband = 10;
-      }
-      if (A_position > deadband) {
-        A_position = crawlspeed;
-      } else if (A_position < deadband * (-1)) {
-        A_position = crawlspeed * (-1);
-      } else {
-        A_position = 0;
-      }
-    }
-
-    if (crawlmodestate) {
-      if (C_position > deadband) {
-        C_position = crawlspeed;
-      } else if (C_position < deadband * (-1)) {
-        C_position = crawlspeed * (-1);
-      } else {
-        C_position = 0;
-      }
-    }
-    if (!Controller.ButtonLDown.pressing()) {
-      if (Controller.ButtonRDown.pressing()) {
-        C_position = C_position * 0.2;
-        printf("in function");
-      }
+    if (backarmstatecounter % 3 == 1) {
+      C_position = C_position * 0.6;
     }
     float LeftSpeed = A_position + C_position;
     float RightSpeed = A_position - C_position;
-
     if ((absA + absC) > deadband) {
       LeftMotor.setVelocity(LeftSpeed, percent);
       RightMotor.setVelocity(RightSpeed, percent);
@@ -770,13 +662,9 @@ void splitdrivewithcrawlmode() {
 // ==============================================================================
 
 void inital() {
-  isfrontclawdownstate = true;
   // P3.extend(cylinder1);
-  isbackarmup = false;
-  isfrontclawleftopen = true;
-  isfrontclawrightopen = true;
   isfingeropen = true;
-  isfrontclawup = true;
+  isfrontclawup = false;
   frontclawcounterstate = 0;
   openfinger();
   frontclawopen();
@@ -797,134 +685,126 @@ void inital() {
 void lowerfrontarmfromstackingheight() {
   threadfrontclawcontrol.interrupt();
   if (frontclawcounterstate % 3 == 2) {
-    frontclawcounterstate = 0;
-    closefinger();
-    raisebackarmthread = thread(raisebackarmtobigstandoffystack);
-    backarmstatecounter = 2;
-    lowerfrontarmfromstandoffheight();
-    LeftMotor.setStopping(brake);
-    RightMotor.setStopping(brake);
-    raisebackarmthread.interrupt();
-    isfingeropen = false;
-  } else if (!iscornergoalstacking) {
     if (driveforwardstate) {
-      frontarmmotorgroup.setStopping(brake);
-      drivetrainthread.interrupt();
-      LeftMotor.setVelocity(100, percent);
-      RightMotor.setVelocity(100, percent);
-      LeftMotor.spin(forward);
-      RightMotor.spin(forward);
       frontclawcounterstate = 0;
-      iscornergoalstacking = false;
-      frontarmmotorgroup.setVelocity(100, percent);
-      frontarmmotorgroup.setTimeout(2, seconds);
-      movefrontclawdown();
-      wait(0.29, seconds);
-      frontarmmotorgroup.setStopping(hold);
-      frontarmmotorgroup.stop();
-      while (Controller.ButtonLDown.pressing()) {
-        Brain.playSound(siren);
-        if (Controller.ButtonRDown.pressing()) {
-          Stackingbuttonstate = !Stackingbuttonstate;
-          if (!Stackingbuttonstate) {
-            frontarmmotorgroup.setVelocity(100, percent);
-            frontarmmotorgroup.spinToPosition(155, degrees, true);
-            wait(0.2, seconds);
-          } else {
-            frontarmmotorgroup.setVelocity(100, percent);
-            frontarmmotorgroup.spinToPosition(260, degrees, true);
-            wait(0.2, seconds);
-          }
-        }
-        printf("in func");
-        wait(20, msec);
-      }
-      frontarmmotorgroup.spinToPosition(155, degrees, true);
-      frontclawopen();
-      drivetrainthread = thread(splitdrivewithcrawlmode);
-      frontarmmotorgroup.setTimeout(2, seconds);
-      frontarmmotorgroup.spinToPosition(0, degrees, true);
-      frontarmmotorgroup.stop();
-      frontarmmotorgroup.setVelocity(100, percent);
-      frontclawcounterstate = 0;
-      isclawgrabbed = true;
+      closefinger();
+      retractguide();
+      raisebackarmthread = thread(raisebackarmtobigstandoffystack);
+      backarmstatecounter = 2;
+      lowerfrontarmfromstandoffheight();
+      LeftMotor.setStopping(brake);
+      RightMotor.setStopping(brake);
     } else {
       frontclawcounterstate = 0;
-      frontarmmotorgroup.setStopping(brake);
-      iscornergoalstacking = false;
-      frontarmmotorgroup.setVelocity(100, percent);
-      frontarmmotorgroup.setTimeout(2, seconds);
-      movefrontclawdown();
-      wait(0.29, seconds);
-      frontarmmotorgroup.setStopping(hold);
-      frontarmmotorgroup.stop();
-      while (Controller.ButtonLDown.pressing()) {
-        Brain.playSound(siren);
-        if (Controller.ButtonRDown.pressing()) {
-          Stackingbuttonstate = !Stackingbuttonstate;
-          if (!Stackingbuttonstate) {
-            frontarmmotorgroup.setVelocity(100, percent);
-            frontarmmotorgroup.spinToPosition(155, degrees, true);
-            wait(0.2, seconds);
-          } else {
-            frontarmmotorgroup.setVelocity(100, percent);
-            frontarmmotorgroup.spinToPosition(260, degrees, true);
-            wait(0.2, seconds);
-          }
-        }
-        printf("in func");
-        wait(20, msec);
-      }
-      frontarmmotorgroup.spinToPosition(155, degrees, true);
-      frontclawopen();
-      frontarmmotorgroup.setTimeout(2, seconds);
-      frontarmmotorgroup.spinToPosition(0, degrees, true);
-      frontarmmotorgroup.stop();
-      frontarmmotorgroup.setVelocity(100, percent);
-      frontclawcounterstate = 0;
-      isclawgrabbed = true;
+      retractguide();
+      lowerfrontarmfromstandoffheight();
     }
-    // wait(0.15, seconds);
-    // retractclawbalancer();
+  } else if (!iscornergoalstacking) {
+    startingpingrabcounter = 0;
+    frontclawcounterstate = 0;
+    frontarmmotorgroup.setStopping(brake);
+    iscornergoalstacking = false;
+    frontarmmotorgroup.setVelocity(80, percent);
+    frontarmmotorgroup.setTimeout(2, seconds);
+    movefrontclawdown();
+    wait(0.39, seconds);
+    frontarmmotorgroup.setStopping(hold);
+    frontarmmotorgroup.stop();
+    Stackingbuttonstate = false;
+    while (Controller.ButtonLDown.pressing()) {
+      printf("in func\n");
+      while (!Controller.ButtonRDown.pressing()) {
+        if (!Controller.ButtonLDown.pressing()) {
+          break;
+        } else {
+          wait(20, msec);
+        }
+      }
+      Brain.playSound(ratchet2);
+      if (Controller.ButtonRDown.pressing()) {
+        Stackingbuttonstate = !Stackingbuttonstate;
+        if (!Stackingbuttonstate) {
+          frontarmmotorgroup.setVelocity(100, percent);
+          Brain.playSound(alarm);
+          frontarmmotorgroup.spinToPosition(130, degrees, false);
+        } else {
+          frontarmmotorgroup.setVelocity(100, percent);
+          Brain.playSound(doorClose);
+          frontarmmotorgroup.spinToPosition(240, degrees, false);
+        }
+      }
+      wait(0.3, seconds);
+    }
+    frontclawopen();
+    isclawgrabbed = true;
+    frontarmmotorgroup.setVelocity(100, percent);
+    frontarmmotorgroup.spinToPosition(0, degrees, true);
+    frontarmmotorgroup.setVelocity(0, percent);
+    frontclawcounterstate = 0;
+    isfrontclawup = false;
+    printf("done func\n");
   } else if (iscornergoalstacking) {
+    // movefrontclawdown();
+    // wait(0.3, seconds);
+    frontclawstop();
     LeftMotor.setStopping(brake);
     RightMotor.setStopping(brake);
-    frontclawleftopen();
-    isclawgrabbed = true;
-    wait(0.5, seconds);
-    // drivetrainthread.interrupt();
-    // LeftMotor.setVelocity(100, percent);
-    // RightMotor.setVelocity(100, percent);
-    // LeftMotor.spin(reverse);
-    // RightMotor.spin(reverse);
-    // wait(0.75, seconds);
-    // drivetrainthread = thread(splitdrivewithcrawlmode);
-    iscornergoalstacking = false;
-    movefrontclawdown();
-    while (frontarmmotorgroup.position(degrees) > 3) {
-      wait(20, msec);
+    if (isintriangel2) {
+      retractclawbalancer();
+      frontclawleftopen();
+      isclawgrabbed = true;
+      wait(1, seconds);
+      retractguide();
+      iscornergoalstacking = false;
+      movefrontclawdown();
+      while (frontarmmotorgroup.position(degrees) > -5) {
+        wait(20, msec);
+      }
+      frontarmmotorgroup.setStopping(brake);
+      frontarmmotorgroup.stop();
+      isfrontclawup = false;
+      frontclawcounterstate = 0;
+      threadfrontclawcontrol.interrupt();
+      extendclawbalancer();
+    } else {
+      extendclawbalancer();
+      isclawgrabbed = true;
+      retractguide();
+      wait(0.3, seconds);
+      iscornergoalstacking = false;
+      frontarmmotorgroup.setVelocity(100, percent);
+      movefrontclawdown();
+      wait(0.3, seconds); // 0.13
+      frontclawleftopen();
+      while (frontarmmotorgroup.position(degrees) > -5) {
+        wait(20, msec);
+      }
+      frontarmmotorgroup.setStopping(coast);
+      frontarmmotorgroup.stop();
+      isfrontclawup = false;
+      frontclawcounterstate = 0;
+      threadfrontclawcontrol.interrupt();
+      extendclawbalancer();
+      printf("infunc\n");
     }
-    wait(0.35, seconds);
-    frontarmmotorgroup.setStopping(brake);
-    frontarmmotorgroup.stop();
-    isfrontclawup = true;
-    frontclawcounterstate = 0;
   }
-  isfrontclawdownstate = true;
+  isintriangle1 = false;
+  isintriangel2 = false;
 }
 
 void raisefrontarmtostackingheight() {
-  isfrontclawdownstate = false;
   frontarmmotorgroup.setStopping(hold);
-  frontclawleftclose();
-  wait(0.1, seconds);
+  retractguide();
+  if (isclawgrabbed) {
+    frontclawleftclose();
+    wait(0.1, seconds);
+  }
   isclawgrabbed = true;
+  isfrontclawup = true;
   extendclawbalancer();
   // wait(0.2, seconds);
-  movefrontclawup();
-  wait(0.15, seconds);
   frontarmmotorgroup.setVelocity(100, percent);
-  frontarmmotorgroup.spinToPosition(250, degrees, false);
+  frontarmmotorgroup.spinToPosition(285, degrees, true);
 }
 
 void raisebackarmtonest() {
@@ -938,29 +818,39 @@ void raisebackarmtonest() {
 }
 
 void grabstartingpin() { // minor issue unresolved why is the backarm not
-                         // raising for first click then raising to standoff
-                         // height
-                         // if (!frontclawcounterstate % 3 == 2) {
-  startingpingrabstate = !startingpingrabstate;
-  if (startingpingrabstate) {
-    frontclawopen();
+  // raising for first click then raising to standoff
+  // height
+  // if (!frontclawcounterstate % 3 == 2) {
+  startingpingrabcounter = startingpingrabcounter + 1;
+  if (startingpingrabcounter % 3 == 1) {
+    // drivetrainthread = thread(splitdrivewithcrawlmode);
+    printf("in func first\n");
     frontarmmotorgroup.setStopping(hold);
-    frontarmmotorgroup.spinToPosition(92, degrees, false);
+    frontarmmotorgroup.stop();
+    deployguide();
+    frontclawopen();
+    frontarmmotorgroup.setVelocity(100, percent);
+    frontarmmotorgroup.setStopping(hold);
     retractclawbalancer();
-  } else {
-    // extendpusher();
-    // wait(0.5, seconds);
-    // retractpusher();
+    frontarmmotorgroup.spinToPosition(102.5, degrees, true);
+    frontarmmotorgroup.setStopping(coast);
+    frontarmmotorgroup.stop();
+  } else if (startingpingrabcounter % 3 == 2) {
+    printf("in func second\n");
+    retractguide();
     extendclawbalancer();
+    frontarmmotorgroup.setVelocity(100, percent);
     frontclawleftclose();
+    frontarmmotorgroup.spinToPosition(325, degrees, false);
+    wait(0.22, seconds);
     frontarmmotorgroup.spinToPosition(210, degrees, false);
-    drivetrainthread.interrupt();
-    LeftMotor.setVelocity(100, percent);
-    RightMotor.setVelocity(100, percent);
-    LeftMotor.spin(reverse);
-    RightMotor.spin(reverse);
-    drivetrainthread = thread(splitdrivewithcrawlmode);
-    isfrontclawup = false;
+    isfrontclawup = true;
+    if (BackArmMotorGroup.position(degrees) > 300) {
+      lowerbackarmfromstandoff();
+    }
+  } else {
+    printf("in func third\n");
+    trianglegoalreset();
   }
   // }
 }
@@ -971,82 +861,89 @@ void grabpins() {
   if (isclawgrabbed) {
     frontclawleftopen();
   } else {
-    movefrontclawdown();
     frontclawleftclose();
-    wait(0.15, seconds);
-    frontclawstop();
   }
+  wait(0.1, seconds);
 }
 void raisefrontarmtostandoffheight() {
   LeftMotor.setStopping(hold);
   RightMotor.setStopping(hold);
-  isfrontclawup = false;
+  isfrontclawup = true;
+  frontarmmotorgroup.setVelocity(100, percent);
   frontarmmotorgroup.spinToPosition(frontclawstandoffheight, degrees, false);
   extendclawbalancer();
 }
 
 void lowerfrontarmfromstandoffheight() {
   killdrivetrain();
-  // FrontArmMotor1.setVelocity(100, percent);
-  // FrontArmMotor2.setVelocity(100, percent);
-  frontarmmotorgroup.setVelocity(100, percent);
-  // LeftMotor.setStopping(coast);
-  // RightMotor.setStopping(coast);
-  // movefrontclawdown();
-  // while (FrontArmMotor1.position(degrees) > 235) { // 230
-  //   wait(20, msec);
-  // }
-  // wait(0.15, seconds);
-  // FrontArmMotor1.stop();
-  // FrontArmMotor2.stop();
+  frontarmmotorgroup.setVelocity(86, percent);
   frontclawopen();
-  // wait(0.3, seconds);
-  // wait(0.15, seconds);
-  // movefrontclawdown();
-  // wait(0.2, seconds);
-  // frontclawstop();
-  // wait(0.2, seconds);
-  frontarmmotorgroup.spinToPosition(200, degrees, true);
-  // FrontArmMotor1.spinToPosition(120, degrees, true);
-  // FrontArmMotor2.spinToPosition(120, degrees, true);
-  // FrontArmMotor1.setStopping(brake);
-  // FrontArmMotor2.setStopping(brake);
-  // LeftMotor.setStopping(coast);
+  isclawgrabbed = true;
+  frontarmmotorgroup.spinToPosition(240, degrees, true);
   drivetrainthread = thread(splitdrivewithcrawlmode);
-  while (BackArmMotorGroup.position(degrees) < 500) {
-    wait(20, msec);
-  }
-
-  // RightMotor.setStopping(coast);
   frontarmmotorgroup.spinToPosition(5, degrees, true);
   frontarmmotorgroup.setStopping(brake);
   frontarmmotorgroup.stop();
   frontarmmotorgroup.setVelocity(100, percent);
   LeftMotor.setStopping(brake);
   RightMotor.setStopping(brake);
-  // retractclawbalancer();
 }
 
-void stackpinsincornergoal() {
-  retractclawbalancer();
-  frontclawleftclose();
-  wait(0.15, seconds);
-  // if (frontarmmotorgroup.position(degrees) < 145) {
-  //   movefrontclawup();
-  //   // while (frontarmmotorgroup.position(degrees) < 110) {
-  //   //   wait(20, msec);
-  //   // }
-  //   wait(0.5, seconds);
-  //   frontarmmotorgroup.setStopping(hold);
-  //   frontclawstop();
-  // }
-  frontarmmotorgroup.setStopping(hold);
-  frontarmmotorgroup.setVelocity(50, percent);
-  frontarmmotorgroup.spinToPosition(cornergoalstackingheight, degrees, false);
-  frontarmmotorgroup.setVelocity(100, percent);
-  frontarmmotorgroup.setStopping(hold);
+void Triangle1() {
+  if (isclawgrabbed) {
+    if (!isguidedeployed) {
+      frontarmmotorgroup.spinToPosition(0, degrees, true);
+    }
+    frontclawleftclose();
+    wait(0.15, seconds);
+  }
+  deployguide();
+  if (!isintriangel2) {
+    frontarmmotorgroup.setStopping(hold);
+    frontarmmotorgroup.setVelocity(100, percent);
+    LeftMotor.setStopping(coast);
+    RightMotor.setStopping(coast);
+    frontarmmotorgroup.spin(forward);
+    wait(0.4, seconds); // 0.4
+    frontarmmotorgroup.setVelocity(50, percent);
+    frontarmmotorgroup.spin(reverse);
+    wait(0.5, seconds); // 0.4
+    frontarmmotorgroup.setStopping(coast);
+    frontarmmotorgroup.stop();
+  }
+  isintriangle1 = true;
+  isintriangel2 = false;
+  isfrontclawup = true;
+  isclawgrabbed = true;
+}
 
-  isfrontclawup = false;
+void Triangle2() {
+  if (isclawgrabbed) {
+    if (!isguidedeployed) {
+      frontarmmotorgroup.spinToPosition(0, degrees, true);
+    }
+    frontclawleftclose();
+    wait(0.15, seconds);
+  }
+  deployguide();
+  retractclawbalancer();
+  if (!isintriangle1) {
+    frontarmmotorgroup.setStopping(coast);
+    frontarmmotorgroup.setVelocity(100, percent);
+    LeftMotor.setStopping(coast);
+    RightMotor.setStopping(coast);
+    frontarmmotorgroup.spin(forward);
+    wait(0.4, seconds);
+    frontarmmotorgroup.setVelocity(50, percent);
+    frontarmmotorgroup.spin(reverse);
+    wait(0.5, seconds);
+    frontarmmotorgroup.setStopping(coast);
+    frontarmmotorgroup.stop();
+  }
+  isfrontclawup = true;
+  isclawgrabbed = true;
+  isintriangle1 = false;
+  isintriangel2 = true;
 }
 
 void pushercontrol() {
@@ -1057,58 +954,43 @@ void pushercontrol() {
     extendpusher();
   }
 }
-void stackinginpinmultipress() {
-  LeftMotor.setStopping(coast);
-  RightMotor.setStopping(coast);
-  stackpinsincornergoal();
-  // extendclawbalancer();
-  Brain.playSound(doorClose);
-  isfrontclawup = false;
-  isclawgrabbed = true;
-  wait(0.75, seconds);
-  frontclawcounterstate = 0;
-}
 
 void buttonlogic() {
+  if (!Controller.ButtonRDown.pressing()) {
+    if (Controller.ButtonLDown.pressing()) {
+      frontarmmotorgroup.setStopping(brake);
+      LeftMotor.setStopping(brake);
+      RightMotor.setStopping(brake);
+      if (isfrontclawup) {
+        Trianglemovingstate = false;
+        lowerfrontarmfromstackingheight();
+        isfrontclawup = false;
+        iscornergoalstacking = false;
+      } else {
+        iscornergoalstacking = false;
+        printf("raising frontarm\n");
+        raisefrontarmtostackingheight();
+        isfrontclawup = true;
+      }
+    }
+  }
+
   if (!Controller.ButtonLDown.pressing()) {
     if (Controller.ButtonRDown.pressing()) {
-      // LeftMotor.stop();
-      // RightMotor.stop();
       raisebackarmthread = thread(fingercontrol);
     }
   }
+
   if (Controller.ButtonFUp.pressing()) {
     backarmcontrol();
   }
 
   if (Controller.ButtonR3.pressing()) {
-    retractclawbalancer();
+    extendclawbalancer();
   }
 
   if (Controller.ButtonEUp.pressing()) {
     dumppinsontobeam();
-  }
-
-  // if (Controller.ButtonEDown.pressing()) {
-  //   grabstartingpin();
-  // }
-
-  if (Controller.ButtonLDown.pressing()) {
-    frontarmmotorgroup.setStopping(brake);
-    LeftMotor.setStopping(brake);
-    RightMotor.setStopping(brake);
-    isfrontclawup = !isfrontclawup;
-    if (isfrontclawup) {
-      // retractclawbalancer();
-      // wait(0.2, seconds);
-      lowerfrontarmfromstackingheight();
-      iscornergoalstacking = false;
-      threadfrontclawcontrol.interrupt();
-    } else {
-      iscornergoalstacking = false;
-      threadfrontclawcontrol.interrupt();
-      raisefrontarmtostackingheight();
-    }
   }
 
   // if (Controller.ButtonL3.pressing()) {
@@ -1123,51 +1005,70 @@ void buttonlogic() {
   //   wait(0.8, seconds);
   //   drivetrainthread = thread(splitdrivewithcrawlmode);
   // }
+  if (Controller.ButtonEDown.pressing()) {
+    istrianglestacking = !istrianglestacking;
+    if (istrianglestacking) {
+      frontclawcounterstate = 1;
+      Trianglemovingstate = false;
+      Brain.playSound(doorClose);
+      extendclawbalancer();
+      threadfrontclawcontrol = thread(Triangle1);
+      iscornergoalstacking = true;
+    } else {
+      frontclawcounterstate = 1;
+      Trianglemovingstate = true;
+      retractclawbalancer();
+      threadfrontclawcontrol = thread(Triangle2);
+      isfrontclawup = false;
+      iscornergoalstacking = true;
+    }
+  }
 
   if (Controller.ButtonFDown.pressing()) {
-    frontclawcounterstate++;
-    if (frontclawcounterstate % 3 == 1) {
-      // Brain.playSound(siren2);
-      // retractclawbalancer();
-      iscornergoalstacking = true;
-      // cornergoalstackingheight = cornergoalstackingheight + 5;
-      threadfrontclawcontrol = thread(stackinginpinmultipress);
-      // wait(0.75, seconds);
-      // frontclawcounterstate = 0;
-    } else if (frontclawcounterstate % 3 == 2) {
+    if (!isfrontclawup) {
+      frontclawcounterstate = 2;
+      retractguide();
+      frontclawleftclose();
+      wait(0.2, seconds);
+      Brain.playSound(tada);
       threadfrontclawcontrol.interrupt();
       iscornergoalstacking = false;
       raisefrontarmtostandoffheight();
     }
   }
-  if (!iscornergoalstacking) {
-    // if (frontclawcounterstate % 3 == 2) {
+
+  if (Controller.ButtonRUp.pressing()) {
+    printf("frontclawstate is %d\n", isfrontclawup);
+    printf("frontclawstate is %d\n", frontclawcounterstate);
+    // if (isfrontclawup && startingpingrabcounter % 3 == 0 &&
+    //     !(frontclawcounterstate == 2)) {
+    //   trianglegoalreset();
+    // } else {
     if (!(backarmstatecounter % 3 == 2)) {
-      if (Controller.ButtonRUp.pressing()) {
-        printf("iscornergoalstacking%d\n", iscornergoalstacking);
-        printf("the clawcounterstate is %d\n", frontclawcounterstate);
-        // printf("frontclawc%d\n", iscornergoalstacking);
-        if (!iscornergoalstacking && !(frontclawcounterstate % 3 == 2)) {
-          printf("inside func");
-          grabstartingpin();
-        }
-        // }
+      raisebackarmthread.interrupt();
+      BackArmMotorGroup.stop();
+      // printf("iscornergoalstacking%d\n", iscornergoalstacking);
+      // printf("the clawcounterstate is %d\n", frontclawcounterstate);
+      if (!iscornergoalstacking && !(frontclawcounterstate % 3 == 2)) {
+        // printf("inside func");
+        grabstartingpin();
       }
+      // }
     } else if (Controller.ButtonRUp.pressing()) {
       standoffheightstatecounter++;
-      if (standoffheightstatecounter % 3 == 1) {
-        deployguide();
-        touchled5.setColor(yellow_green);
-      } else if (standoffheightstatecounter % 3 == 2) {
-        touchled5.setColor(purple);
-      } else {
+      if (standoffheightstatecounter % 3 == 0) {
         touchled5.setColor(red);
+      } else if (standoffheightstatecounter % 3 == 1) {
+        touchled5.setColor(yellow_green);
+      } else {
+        touchled5.setColor(purple);
       }
       Brain.playSound(siren);
     }
+    // }
   }
 
-  if (isfrontclawdownstate) {
+  if (!isfrontclawup) {
     if (!iscornergoalstacking) {
       // if (frontclawcounterstate % 3 == 2) {
       if (Controller.ButtonLUp.pressing()) {
@@ -1183,36 +1084,76 @@ void buttonlogic() {
 
 void disconnectionfunc() {
   if (FrontArmMotor1.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("frontarmotor is disconnected port1");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("frontarmM port4");
+    Brain.Screen.setPenColor(white);
   }
   if (FrontArmMotor2.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("motor2 is disconnected port2");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("FrontarmM1 port10");
+    Brain.Screen.setPenColor(white);
   }
   if (BackArmMotor1.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("motor6 is disconnected port6");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("backarmM port2");
+    Brain.Screen.setPenColor(white);
   }
   if (BackArmMotor2.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("motor7 is disconnected port7");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("backarmM port8");
+    Brain.Screen.setPenColor(white);
   }
   if (LeftMotor.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("leftmotor is disconnected port8");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("leftmotor port9");
+    Brain.Screen.setPenColor(white);
   }
   if (RightMotor.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("rightmotor is disconnected port2");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("rightmotor port3");
+    Brain.Screen.setPenColor(white);
   }
   if (P1.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("P1 disconnected port4");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("P1 port11");
+    Brain.Screen.setPenColor(white);
   }
   if (P2.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
     Brain.playSound(siren);
-    Brain.Screen.print("P1 disconnected port10");
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("P2 port12");
+    Brain.Screen.setPenColor(white);
+  }
+  if (touchled5.installed() == false) {
+    touchled5.setBlink(blue, 0.2);
+    Brain.playSound(siren);
+    Brain.Screen.setCursor(5, 1);
+    Brain.Screen.setPenColor(red);
+    Brain.Screen.print("touchled port5");
+    Brain.Screen.setPenColor(white);
   }
 }
 
@@ -1229,17 +1170,20 @@ void driveforwardcontrolfunc() {
 void trianglegoalreset() {
   frontclawcounterstate = 0;
   iscornergoalstacking = false;
-  isfrontclawdownstate = true;
-  isclawgrabbed = false;
-  isfrontclawup = true;
+  isclawgrabbed = true;
+  isfrontclawup = false;
+  istrianglestacking = false;
+  Trianglemovingstate = false;
+  retractguide();
   frontarmmotorgroup.spinToPosition(5, degrees, true);
+  frontclawleftopen();
 }
 
 int main() {
   inital();
   pumpon();
   standoffheightstatecounter = 0;
-  frontclawstandoffheight = 300;
+  frontclawstandoffheight = 320;
   drivetrainthread = thread(splitdrivewithcrawlmode);
   eventraisebackarmtonest = event(raisebackarmtonest);
   Controller.ButtonLUp.pressed(buttonlogic);
@@ -1248,53 +1192,24 @@ int main() {
   Controller.ButtonFUp.pressed(buttonlogic);
   Controller.ButtonR3.pressed(buttonlogic);
   // Controller.ButtonR3.pressed(retractguide);
-  Controller.ButtonL3.pressed(trianglegoalreset);
   Controller.ButtonEUp.pressed(buttonlogic);
   Controller.ButtonEDown.pressed(buttonlogic);
   Controller.ButtonLDown.pressed(buttonlogic);
   Controller.ButtonFDown.pressed(buttonlogic);
   Brain.playSound(tada);
   touchled5.pressed(driveforwardcontrolfunc);
-  eventbackclawgodownforbeam = event(backarmgodownforbeam);
   eventfrontclawgodown = event(movefrontclawdown);
+  eventbackclawgodownforbeam = event(backarmgodownforbeam);
   extendclawbalancer();
   // Run main drive control loop
   while (true) {
     Brain.Screen.setFont(mono15);
-    if (Brain.buttonLeft.pressing()) {
-      Brain.Screen.clearScreen();
-      if (frontclawstandoffheight < 410) {
-        frontclawstandoffheight = frontclawstandoffheight + 1;
-        Brain.playSound(doorClose);
-        Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("standoffH is %d\n", frontclawstandoffheight);
-        Brain.Screen.setCursor(1, 2);
-        wait(0.2, seconds);
-      } else {
-        Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("standoffH is too high");
-        Brain.Screen.setCursor(1, 2);
-      }
-    } else if (Brain.buttonRight.pressing()) {
-      Brain.Screen.clearScreen();
-      if (frontclawstandoffheight > 280) {
-        frontclawstandoffheight = frontclawstandoffheight - 1;
-        Brain.playSound(doorClose);
-        Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("standoffH is %d\n", frontclawstandoffheight);
-        Brain.Screen.setCursor(1, 2);
-      } else {
-        Brain.Screen.setCursor(1, 1);
-        Brain.Screen.print("standoffH is too low");
-        Brain.Screen.setCursor(1, 2);
-      }
-    }
     disconnectionfunc();
     // printf("positioning of A is %d\n", Controller.AxisA.position());
     // printf("positioning of B is %d\n", Controller.AxisB.position());
-    if (iscornergoalstacking || frontclawcounterstate % 3 == 2) {
+    if (frontclawcounterstate % 3 == 2) {
       // } else {
-      if (Controller.ButtonLUp.pressing()) {
+      if (Controller.AxisD.position() > 80) {
         // frontarmmotorgroup.setVelocity(100, percent);
         Dinput = 10;
         frontarmmotorgroup.spinFor(Dinput, degrees);
@@ -1306,8 +1221,6 @@ int main() {
           frontarmmotorgroup.setVelocity(100, percent);
           frontarmmotorgroup.spinFor(Dinput, degrees);
           cornergoalstackingheight = cornergoalstackingheight + Dinput;
-          // wait(0.75, seconds);
-          // frontclawcounterstate = 0;
         } else if (frontclawcounterstate % 3 == 2) {
           threadfrontclawcontrol.interrupt();
           iscornergoalstacking = false;
@@ -1316,7 +1229,7 @@ int main() {
         }
         Brain.playSound(ratchet2);
       }
-      if (Controller.ButtonRUp.pressing()) {
+      if (Controller.AxisD.position() < -80) {
         Dinput = -7;
         frontarmmotorgroup.spinFor(Dinput, degrees);
         cornergoalstackingheight = cornergoalstackingheight + Dinput;
@@ -1328,8 +1241,6 @@ int main() {
           frontarmmotorgroup.setVelocity(100, percent);
           frontarmmotorgroup.spinFor(Dinput, degrees);
           cornergoalstackingheight = cornergoalstackingheight + Dinput;
-          // wait(0.75, seconds);
-          // frontclawcounterstate = 0;
         } else if (frontclawcounterstate % 3 == 2) {
           threadfrontclawcontrol.interrupt();
           iscornergoalstacking = false;
@@ -1341,7 +1252,7 @@ int main() {
 
     // }
     // printf("The front claw position is %.2f\n",
-    //        FrontArmMotor1.position(degrees));
+    //        frontarmmotorgroup.position(degrees));
     Brain.Screen.setFont(mono15);
     Brain.Screen.setCursor(3, 1);
     Brain.Screen.print("backarm  %.2f\n", BackArmMotor1.position(degrees));
@@ -1354,6 +1265,7 @@ int main() {
     Brain.Screen.setCursor(6, 1);
     Brain.Screen.print("farmgroup%.2f\n ",
                        frontarmmotorgroup.position(degrees));
+
     // if (!Controller.ButtonLUp.pressing()) {
     //   if (isclawsensorsdetecting) {
     //     if (distancesensorleftclaw.objectDistance(mm) <
